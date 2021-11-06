@@ -222,9 +222,9 @@ struct sllin {
 static struct net_device **sllin_devs;
 static int sllin_configure_frame_cache(struct sllin *sl, struct can_frame *cf);
 static void sllin_slave_receive_buf(struct tty_struct *tty,
-			      const unsigned char *cp, char *fp, int count);
+			      const unsigned char *cp, const char *fp, int count);
 static void sllin_master_receive_buf(struct tty_struct *tty,
-			      const unsigned char *cp, char *fp, int count);
+			      const unsigned char *cp, const char *fp, int count);
 
 
 /* Values of two parity bits in LIN Protected
@@ -659,7 +659,7 @@ static void sll_setup(struct net_device *dev)
   Routines looking at TTY side.
  ******************************************/
 static void sllin_master_receive_buf(struct tty_struct *tty,
-			      const unsigned char *cp, char *fp, int count)
+			      const unsigned char *cp, const char *fp, int count)
 {
 	struct sllin *sl = (struct sllin *) tty->disc_data;
 
@@ -903,7 +903,7 @@ static void sllin_slave_finish_rx_msg(struct sllin *sl)
 }
 
 static void sllin_slave_receive_buf(struct tty_struct *tty,
-			      const unsigned char *cp, char *fp, int count)
+			      const unsigned char *cp, const char *fp, int count)
 {
 	struct sllin *sl = (struct sllin *) tty->disc_data;
 	int lin_id;
@@ -1010,7 +1010,7 @@ static void sllin_slave_receive_buf(struct tty_struct *tty,
 }
 
 static void sllin_receive_buf(struct tty_struct *tty,
-			      const unsigned char *cp, char *fp, int count)
+			      const unsigned char *cp, const char *fp, int count)
 {
 	struct sllin *sl = (struct sllin *) tty->disc_data;
 	netdev_dbg(sl->dev, "sllin_receive_buf invoked, count = %u\n", count);
@@ -1429,6 +1429,7 @@ slstate_response_wait:
 			}
 
 			/* Be aware, no BREAK here */
+			fallthrough;
 		case SLSTATE_RESPONSE_WAIT_BUS:
 			if (sl->rx_cnt < sl->rx_expect)
 				continue;
@@ -1824,8 +1825,8 @@ static int sllin_ioctl(struct tty_struct *tty, struct file *file,
 
 static struct tty_ldisc_ops sll_ldisc = {
 	.owner		= THIS_MODULE,
-	.magic		= TTY_LDISC_MAGIC,
 	.name		= "sllin",
+	.num		= N_SLLIN,
 	.open		= sllin_open,
 	.close		= sllin_close,
 	.hangup		= sllin_hangup,
@@ -1836,8 +1837,8 @@ static struct tty_ldisc_ops sll_ldisc = {
 
 static struct tty_ldisc_ops sll_slave_ldisc = {
 	.owner		= THIS_MODULE,
-	.magic		= TTY_LDISC_MAGIC,
 	.name		= "sllin-slave",
+	.num		= N_SLLIN_SLAVE,
 	.open		= sllin_open_slave,
 	.close		= sllin_close,
 	.hangup		= sllin_hangup,
@@ -1869,14 +1870,14 @@ static int __init sllin_init(void)
 	}
 
 	/* Fill in our line protocol discipline, and register it */
-	status = tty_register_ldisc(N_SLLIN, &sll_ldisc);
+	status = tty_register_ldisc(&sll_ldisc);
 	if (status)  {
 		pr_err("sllin: can't register line discipline\n");
 		kfree(sllin_devs);
 	} else {
-		status = tty_register_ldisc(N_SLLIN_SLAVE, &sll_slave_ldisc);
+		status = tty_register_ldisc(&sll_slave_ldisc);
 		if (status)  {
-			tty_unregister_ldisc(N_SLLIN);
+			tty_unregister_ldisc(&sll_ldisc);
 			pr_err("sllin: can't register slave line discipline\n");
 			kfree(sllin_devs);
 		}
@@ -1949,13 +1950,8 @@ static void __exit sllin_exit(void)
 	kfree(sllin_devs);
 	sllin_devs = NULL;
 
-	i = tty_unregister_ldisc(N_SLLIN);
-	if (i)
-		pr_err("sllin: can't unregister ldisc (err %d)\n", i);
-
-	i = tty_unregister_ldisc(N_SLLIN_SLAVE);
-	if (i)
-		pr_err("sllin: can't unregister slave ldisc (err %d)\n", i);
+	tty_unregister_ldisc(&sll_ldisc);
+	tty_unregister_ldisc(&sll_slave_ldisc);
 
 
 #ifdef SLLIN_LED_TRIGGER
